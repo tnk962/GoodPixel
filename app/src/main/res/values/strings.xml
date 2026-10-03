@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">GoodPixel</string>
+    <string name="accessibility_service_description">画面端ジェスチャー（戻る、スクリーンショット、画面分割等）および音量キーの拡張操作を実行するために使用します。</string>
+</resources>
