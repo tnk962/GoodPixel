@@ -112,6 +112,7 @@ OS標準の通知欄のようにアプリごとにまとめず、**届いた順�
 | **通知へのアクセス (Notification Listener)** | NotiStar機能としての過去通知の収集・保存・検索 |
 | **システム設定の変更 (Write Settings)** | 画面自動回転のダイレクト切り替え |
 | **カメラ (Camera)** | クイックツールからのフラッシュライト（懐中電灯）点灯制御 |
+| **不明なアプリのインストール (Install Packages)** | アプリ内からのGoodPixel最新版自動アップデート |
 
 ---
 
@@ -143,13 +144,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ```
 app/src/main/java/com/example/goodpixel/
-├── MainActivity.kt                      # エントリーポイント
+├── MainActivity.kt                      # エントリーポイント（HOME起動時NotiStar表示 / 設定タブ切り替え）
 ├── data/
 │   ├── edge/
 │   │   └── EdgeAppManager.kt            # エッジパネル登録アプリの走査・永続化
-│   └── notification/
-│       ├── NotificationItem.kt          # NotiStar通知データモデル
-│       └── NotificationDbHelper.kt      # 通知履歴SQLiteデータベース
+│   ├── notification/
+│   │   ├── NotificationItem.kt          # NotiStar通知データモデル
+│   │   └── NotificationDbHelper.kt      # 通知履歴SQLiteデータベース（v2: 全件時系列保存）
+│   └── update/
+│       └── AppUpdateManager.kt          # GitHub Releases連携アプリアップデーター
 ├── service/
 │   ├── GoodAccessibilityService.kt      # コア常駐サービス（OHO+、キーボード退避、各パネル統括）
 │   └── GoodNotificationListenerService.kt# 通知リスナーサービス
@@ -165,5 +168,5 @@ app/src/main/java/com/example/goodpixel/
     ├── quicktools/
     │   └── QuickToolsOverlayView.kt     # フローティングクイック設定パネル
     └── main/
-        └── MainScreen.kt                # 統合設定・動作テスト画面
+        └── MainScreen.kt                # 統合設定・アップデート確認・動作テスト画面
 ```
