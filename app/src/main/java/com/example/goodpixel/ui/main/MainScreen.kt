@@ -16,16 +16,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -34,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,19 +53,36 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.goodpixel.data.update.AppUpdateManager
+import com.example.goodpixel.data.update.ReleaseInfo
 import com.example.goodpixel.service.GoodAccessibilityService
+import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
 
     val isAccessibilityEnabled by GoodAccessibilityService.isServiceEnabled.collectAsState()
     var isOverlayPermissionGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var isNotificationListenerGranted by remember { mutableStateOf(checkNotificationListenerPermission(context)) }
     var isDebugOverlayVisible by remember { mutableStateOf(GoodAccessibilityService.isDebugOverlayEnabled(context)) }
     var isVibrationOn by remember { mutableStateOf(GoodAccessibilityService.isVibrationEnabled(context)) }
+
+    // アップデート管理用の状態
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<ReleaseInfo?>(null) }
+    var updateStatusMessage by remember { mutableStateOf<String?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0) }
+    var downloadedBytes by remember { mutableStateOf(0L) }
+    var totalBytes by remember { mutableStateOf(0L) }
+    var downloadedApkFile by remember { mutableStateOf<File?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
 
     // 画面復帰時に権限状態を再チェック
     DisposableEffect(lifecycleOwner) {
@@ -334,7 +359,272 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     }
                 }
             }
+
+            // 7. アプリ情報 & アップデートカード
+            val currentVersion = remember { AppUpdateManager.getCurrentVersion(context) }
+            val currentVersionCode = remember { AppUpdateManager.getCurrentVersionCode(context) }
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("📦 アプリ情報 & アップデート", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "GoodPixel v$currentVersion (Build $currentVersionCode)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    isCheckingUpdate = true
+                                    updateStatusMessage = null
+                                    coroutineScope.launch {
+                                        val result = AppUpdateManager.checkLatestRelease(context)
+                                        isCheckingUpdate = false
+                                        result.onSuccess { info ->
+                                            updateInfo = info
+                                            showUpdateDialog = true
+                                        }.onFailure { e ->
+                                            updateStatusMessage = "確認に失敗しました: ${e.localizedMessage ?: "通信エラー"}"
+                                        }
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Text("🔄 更新確認", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (updateStatusMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = updateStatusMessage!!,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    if (downloadedApkFile != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "✅ 更新APKの準備完了",
+                                fontSize = 12.sp,
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Bold
+                            )
+                            Button(
+                                onClick = {
+                                    if (!AppUpdateManager.canRequestPackageInstalls(context)) {
+                                        showPermissionDialog = true
+                                    } else {
+                                        AppUpdateManager.installApk(context, downloadedApkFile!!)
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Text("インストール", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // アップデート詳細・確認ダイアログ
+    if (showUpdateDialog && updateInfo != null) {
+        val info = updateInfo!!
+        AlertDialog(
+            onDismissRequest = {
+                if (!isDownloading) showUpdateDialog = false
+            },
+            title = {
+                Text(
+                    text = if (info.isNewer) "🎉 アップデートがあります" else "✅ 最新バージョンです",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "最新版: ${info.tagName} (現在: v${AppUpdateManager.getCurrentVersion(context)})",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
+                    )
+                    if (info.apkSizeBytes > 0) {
+                        val sizeMb = String.format("%.1f", info.apkSizeBytes / (1024.0 * 1024.0))
+                        Text(
+                            text = "ファイルサイズ: ${sizeMb} MB",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (info.body.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("更新内容:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = info.body,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (isDownloading) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "ダウンロード中... ($downloadProgress%)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        LinearProgressIndicator(
+                            progress = { downloadProgress / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        val dlMb = String.format("%.1f", downloadedBytes / (1024.0 * 1024.0))
+                        val totMb = String.format("%.1f", totalBytes / (1024.0 * 1024.0))
+                        Text(
+                            text = "$dlMb MB / $totMb MB",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (downloadedApkFile != null && !isDownloading) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "✅ ダウンロード完了！「インストール」を押してください。",
+                            fontSize = 13.sp,
+                            color = Color(0xFF2E7D32),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (downloadedApkFile != null) {
+                    Button(
+                        onClick = {
+                            if (!AppUpdateManager.canRequestPackageInstalls(context)) {
+                                showPermissionDialog = true
+                            } else {
+                                AppUpdateManager.installApk(context, downloadedApkFile!!)
+                            }
+                        }
+                    ) {
+                        Text("📦 インストール")
+                    }
+                } else if (!isDownloading) {
+                    Button(
+                        onClick = {
+                            if (!AppUpdateManager.canRequestPackageInstalls(context)) {
+                                showPermissionDialog = true
+                                return@Button
+                            }
+                            isDownloading = true
+                            downloadProgress = 0
+                            downloadedApkFile = null
+                            coroutineScope.launch {
+                                val dlResult = AppUpdateManager.downloadApk(context, info) { percent, dl, tot ->
+                                    downloadProgress = percent
+                                    downloadedBytes = dl
+                                    totalBytes = tot
+                                }
+                                isDownloading = false
+                                dlResult.onSuccess { file ->
+                                    downloadedApkFile = file
+                                    if (AppUpdateManager.canRequestPackageInstalls(context)) {
+                                        AppUpdateManager.installApk(context, file)
+                                    } else {
+                                        showPermissionDialog = true
+                                    }
+                                }.onFailure { err ->
+                                    updateStatusMessage = "ダウンロード失敗: ${err.localizedMessage}"
+                                }
+                            }
+                        }
+                    ) {
+                        Text(if (info.isNewer) "⬇️ 今すぐ更新" else "再ダウンロード")
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isDownloading) {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text("閉じる")
+                    }
+                }
+            }
+        )
+    }
+
+    // インストール権限リクエストダイアログ
+    if (showPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDialog = false },
+            title = { Text("⚠️ 不明なアプリのインストール許可") },
+            text = {
+                Text(
+                    "GoodPixelをアプリ内から直接アップデートするには、「提供元不明のアプリのインストール」権限を許可する必要があります。\n\n" +
+                    "設定画面が開いたら「この提供元のアプリを許可」をONにしてください。"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPermissionDialog = false
+                        AppUpdateManager.openInstallPermissionSetting(context)
+                    }
+                ) {
+                    Text("設定を開く")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
     }
 }
 
