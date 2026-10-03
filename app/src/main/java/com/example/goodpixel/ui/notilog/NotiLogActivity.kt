@@ -38,7 +38,16 @@ class NotiLogActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                NotiLogScreen(onBack = { finish() })
+                NotiLogScreen(
+                    onBack = { finish() },
+                    showBackButton = true,
+                    onOpenSettings = {
+                        val intent = Intent(this, com.example.goodpixel.MainActivity::class.java).apply {
+                            putExtra("open_tab", "settings")
+                        }
+                        startActivity(intent)
+                    }
+                )
             }
         }
     }
@@ -46,7 +55,11 @@ class NotiLogActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun NotiLogScreen(onBack: () -> Unit) {
+fun NotiLogScreen(
+    onBack: () -> Unit,
+    showBackButton: Boolean = true,
+    onOpenSettings: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val dbHelper = remember { NotificationDbHelper.getInstance(context) }
     val scope = rememberCoroutineScope()
@@ -81,16 +94,23 @@ fun NotiLogScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("NotiStar 通知ログ") },
+                title = { Text("NotiStar 通知ログ", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 },
                 actions = {
                     if (notifications.isNotEmpty()) {
                         IconButton(onClick = { showDeleteConfirmDialog = true }) {
                             Text("🗑️", fontSize = 18.sp)
+                        }
+                    }
+                    if (onOpenSettings != null) {
+                        IconButton(onClick = onOpenSettings) {
+                            Text("⚙️", fontSize = 18.sp)
                         }
                     }
                 },

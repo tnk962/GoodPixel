@@ -26,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -61,7 +62,10 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(modifier: Modifier = Modifier) {
+fun MainScreen(
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
@@ -99,7 +103,19 @@ fun MainScreen(modifier: Modifier = Modifier) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("GoodPixel (All-in-One)", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        if (onBack != null) "⚙️ GoodPixel 設定" else "GoodPixel (All-in-One)",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -265,8 +281,12 @@ fun MainScreen(modifier: Modifier = Modifier) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = {
-                            val intent = Intent(context, com.example.goodpixel.ui.notilog.NotiLogActivity::class.java)
-                            context.startActivity(intent)
+                            if (onBack != null) {
+                                onBack()
+                            } else {
+                                val intent = Intent(context, com.example.goodpixel.ui.notilog.NotiLogActivity::class.java)
+                                context.startActivity(intent)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
