@@ -53,6 +53,9 @@ class GoodNotificationListenerService : NotificationListenerService() {
         // 自身のアプリ通知やシステムUIの常駐音量バー等のノイズを除外
         if (pkg == packageName) return
 
+        // 常駐通知（音楽再生バー、ナビ案内中、ダウンロード進捗など）は履歴から除外
+        if (sbn.isOngoing) return
+
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 

@@ -18,7 +18,7 @@ class NotificationDbHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "goodpixel_notifications.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
 
         private const val TABLE_NOTIFICATIONS = "notifications"
         private const val COL_ID = "id"
@@ -43,6 +43,7 @@ class NotificationDbHelper private constructor(context: Context) :
     }
 
     override fun onCreate(db: SQLiteDatabase) {
+        // notification_keyのUNIQUE制約を撤廃（Twitter等の通知ID再利用による過去ログ上書きを防止）
         val createSql = """
             CREATE TABLE $TABLE_NOTIFICATIONS (
                 $COL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +52,7 @@ class NotificationDbHelper private constructor(context: Context) :
                 $COL_TITLE TEXT,
                 $COL_TEXT TEXT,
                 $COL_POST_TIME INTEGER NOT NULL,
-                $COL_KEY TEXT UNIQUE
+                $COL_KEY TEXT
             )
         """.trimIndent()
         db.execSQL(createSql)
@@ -59,8 +60,33 @@ class NotificationDbHelper private constructor(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_NOTIFICATIONS")
-        onCreate(db)
+        if (oldVersion < 2) {
+            try {
+                // 既存データを保持したままUNIQUE制約を解除するテーブル移行
+                db.execSQL("""
+                    CREATE TABLE notifications_v2 (
+                        $COL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                        $COL_PKG TEXT NOT NULL,
+                        $COL_APP_NAME TEXT NOT NULL,
+                        $COL_TITLE TEXT,
+                        $COL_TEXT TEXT,
+                        $COL_POST_TIME INTEGER NOT NULL,
+                        $COL_KEY TEXT
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO notifications_v2 ($COL_ID, $COL_PKG, $COL_APP_NAME, $COL_TITLE, $COL_TEXT, $COL_POST_TIME, $COL_KEY)
+                    SELECT $COL_ID, $COL_PKG, $COL_APP_NAME, $COL_TITLE, $COL_TEXT, $COL_POST_TIME, $COL_KEY FROM $TABLE_NOTIFICATIONS
+                """.trimIndent())
+                db.execSQL("DROP TABLE $TABLE_NOTIFICATIONS")
+                db.execSQL("ALTER TABLE notifications_v2 RENAME TO $TABLE_NOTIFICATIONS")
+                db.execSQL("CREATE INDEX idx_post_time ON $TABLE_NOTIFICATIONS ($COL_POST_TIME DESC)")
+            } catch (e: Exception) {
+                // 万一失敗した場合は再作成
+                db.execSQL("DROP TABLE IF EXISTS $TABLE_NOTIFICATIONS")
+                onCreate(db)
+            }
+        }
     }
 
     suspend fun insertNotification(
@@ -71,6 +97,38 @@ class NotificationDbHelper private constructor(context: Context) :
         postTime: Long,
         key: String
     ): Long = withContext(Dispatchers.IO) {
+        val db = writableDatabase
+
+        // 直近の同一パッケージ＆同一キーの通知をチェック
+        // タイトルも本文も完全に一致しており、かつ直近60秒以内の再描画・同一通知の再ポストであればスキップ
+        val checkSql = """
+            SELECT $COL_TITLE, $COL_TEXT, $COL_POST_TIME 
+            FROM $TABLE_NOTIFICATIONS 
+            WHERE $COL_PKG = ? AND $COL_KEY = ? 
+            ORDER BY $COL_POST_TIME DESC LIMIT 1
+        """.trimIndent()
+
+        var isDuplicate = false
+        try {
+            db.rawQuery(checkSql, arrayOf(pkg, key)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val lastTitle = cursor.getString(0) ?: ""
+                    val lastText = cursor.getString(1) ?: ""
+                    val lastTime = cursor.getLong(2)
+
+                    if (lastTitle == title && lastText == text && (postTime - lastTime < 60_000L)) {
+                        isDuplicate = true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // クエリ失敗時は安全のためそのまま挿入を継続
+        }
+
+        if (isDuplicate) {
+            return@withContext -1L
+        }
+
         val values = ContentValues().apply {
             put(COL_PKG, pkg)
             put(COL_APP_NAME, appName)
@@ -79,12 +137,9 @@ class NotificationDbHelper private constructor(context: Context) :
             put(COL_POST_TIME, postTime)
             put(COL_KEY, key)
         }
-        val id = writableDatabase.insertWithOnConflict(
-            TABLE_NOTIFICATIONS,
-            null,
-            values,
-            SQLiteDatabase.CONFLICT_REPLACE
-        )
+
+        // CONFLICT_REPLACE ではなく、通常の insert で確実に新レコードとして蓄積
+        val id = db.insert(TABLE_NOTIFICATIONS, null, values)
         _dataUpdates.tryEmit(Unit)
         id
     }
