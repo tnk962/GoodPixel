@@ -78,8 +78,8 @@ class EdgePanelOverlayView(
         }
         panelLayout.addView(header)
 
-        // 2. 特殊ショートカット（NotiStar, スマート選択, クイックツール）
-        panelLayout.addView(createShortcutItem("📜", "NotiStar") {
+        // 2. 特殊ショートカット（通知ログ, スマート選択, クイックツール）
+        panelLayout.addView(createShortcutItem("📜", "通知ログ") {
             closePanel()
             val intent = Intent(context, NotiLogActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -88,7 +88,9 @@ class EdgePanelOverlayView(
         })
 
         panelLayout.addView(createShortcutItem("✂️", "スマート選択") {
-            closePanel()
+            // スクリーンショットへの写り込みを防ぐため、瞬時に非表示にして閉じる
+            visibility = View.GONE
+            onDismiss()
             onTriggerSmartCapture()
         })
 

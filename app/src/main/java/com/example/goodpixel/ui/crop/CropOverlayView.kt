@@ -1,5 +1,6 @@
 package com.example.goodpixel.ui.crop
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
@@ -7,22 +8,33 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import android.os.Environment
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
+import com.example.goodpixel.data.ai.MediaPipeSmartSelectionEngine
+import com.example.goodpixel.data.ai.SmartSelectionEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -30,6 +42,7 @@ import kotlin.math.min
 /**
  * スマート選択（部分切り抜き）用オーバーレイView
  * - 指でドラッグして四角く囲む
+ * - 対象物をタップしてAI（Interactive Segmenter）による自動選択
  * - 枠内ドラッグで移動、四隅・4辺ドラッグでリサイズ
  * - 枠外タップで再選択
  * - 写真ファイル（PNG）として Pictures/GoodPixel フォルダに保存
@@ -45,10 +58,14 @@ class CropOverlayView(
         private const val TAG = "CropOverlayView"
     }
 
+    private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val smartSelectionEngine: SmartSelectionEngine = MediaPipeSmartSelectionEngine(context.applicationContext)
+
     private val cropCanvasView = CropCanvasView(context)
     private val buttonBar = LinearLayout(context)
     private val saveButton = Button(context)
     private val cancelButton = Button(context)
+    private var isDismissed = false
 
     init {
         fitsSystemWindows = false
@@ -81,7 +98,7 @@ class CropOverlayView(
             text = "キャンセル"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#444444"))
-            setOnClickListener { onDismiss() }
+            setOnClickListener { dismiss() }
         }
 
         saveButton.apply {
@@ -106,6 +123,32 @@ class CropOverlayView(
             bottomMargin = 80
         }
         addView(buttonBar, barParams)
+
+        // AIエンジンの事前初期化と特徴量抽出をバックグラウンドで開始
+        viewScope.launch {
+            smartSelectionEngine.prepare(screenshotBitmap)
+        }
+    }
+
+    private fun dismiss() {
+        if (isDismissed) return
+        isDismissed = true
+        cleanup()
+        onDismiss()
+    }
+
+    private fun cleanup() {
+        try {
+            viewScope.cancel()
+            smartSelectionEngine.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in cleanup", e)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        cleanup()
     }
 
     private fun saveSelectedCrop() {
@@ -171,7 +214,7 @@ class CropOverlayView(
             Log.e(TAG, "Save error", e)
             Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
-            onDismiss()
+            dismiss()
         }
     }
 
@@ -196,6 +239,31 @@ class CropOverlayView(
         private val edgeMargin = 42f // 4辺の当たり判定幅
         private val snapThreshold = 36f // 画面端への吸着（スナップ）しきい値(px)
         private var wasSnapped = false
+
+        // AI選択関連
+        private var aiSelectJob: Job? = null
+        private var touchDownX = 0f
+        private var touchDownY = 0f
+        private var isPotentialTap = false
+
+        // AI思考中パルスアニメーション
+        private var aiPulseCenter: PointF? = null
+        private var aiPulseRadius = 0f
+        private var aiPulseAlpha = 0
+        private var pulseAnimator: ValueAnimator? = null
+
+        private val pulseStrokePaint = Paint().apply {
+            color = Color.parseColor("#4285F4")
+            style = Paint.Style.STROKE
+            strokeWidth = 5f
+            isAntiAlias = true
+        }
+
+        private val pulseFillPaint = Paint().apply {
+            color = Color.parseColor("#1A73E8")
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
 
         private val dimPaint = Paint().apply {
             color = Color.argb(135, 0, 0, 0)
@@ -227,6 +295,32 @@ class CropOverlayView(
         init {
             fitsSystemWindows = false
             setLayerType(LAYER_TYPE_SOFTWARE, null)
+        }
+
+        /**
+         * 画面端への吸着および「剥がし」処理
+         * 端に向かうときはスナップし、端から引き離すときは吸着を解除してスムーズに動かせる
+         */
+        private fun snapDimension(targetVal: Float, curVal: Float, maxLimit: Float): Float {
+            // 0f 端（左端または上端）
+            if (curVal <= 0f) {
+                // すでに端に吸着している場合：内側へ12px以上引っ張ったら吸着を解除して剥がす
+                return if (targetVal > 12f) targetVal else 0f
+            } else if (targetVal < snapThreshold && targetVal < curVal) {
+                // 端に向かって移動している時のみスナップ
+                return 0f
+            }
+
+            // maxLimit 端（右端または下端）
+            if (curVal >= maxLimit) {
+                // すでに端に吸着している場合：内側へ12px以上引っ張ったら吸着を解除して剥がす
+                return if (targetVal < maxLimit - 12f) targetVal else maxLimit
+            } else if (targetVal > maxLimit - snapThreshold && targetVal > curVal) {
+                // 端に向かって移動している時のみスナップ
+                return maxLimit
+            }
+
+            return targetVal
         }
 
         private fun snapX(valX: Float): Float {
@@ -289,6 +383,89 @@ class CropOverlayView(
                 drawHandle(canvas, rect.left, midY, 10f)
                 drawHandle(canvas, rect.right, midY, 10f)
             }
+
+            // 3. AI思考中パルスアニメーションを描画
+            val pulse = aiPulseCenter
+            if (pulse != null && aiPulseRadius > 0f) {
+                pulseFillPaint.alpha = (aiPulseAlpha * 0.25f).toInt()
+                pulseStrokePaint.alpha = aiPulseAlpha
+                canvas.drawCircle(pulse.x, pulse.y, aiPulseRadius, pulseFillPaint)
+                canvas.drawCircle(pulse.x, pulse.y, aiPulseRadius, pulseStrokePaint)
+            }
+        }
+
+        private fun startAiPulse(tapX: Float, tapY: Float) {
+            pulseAnimator?.cancel()
+            aiPulseCenter = PointF(tapX, tapY)
+            pulseAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 600
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { anim ->
+                    val fraction = anim.animatedFraction
+                    aiPulseRadius = 15f + fraction * 75f
+                    aiPulseAlpha = ((1f - fraction) * 220).toInt()
+                    invalidate()
+                }
+                start()
+            }
+        }
+
+        private fun stopAiPulse() {
+            pulseAnimator?.cancel()
+            pulseAnimator = null
+            aiPulseCenter = null
+            invalidate()
+        }
+
+        private fun triggerAiSelection(tapX: Float, tapY: Float) {
+            // 前回の推論タスクをキャンセル（連打対策）
+            aiSelectJob?.cancel()
+            startAiPulse(tapX, tapY)
+            performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+
+            aiSelectJob = viewScope.launch {
+                val result = smartSelectionEngine.select(
+                    x = tapX,
+                    y = tapY,
+                    viewWidth = width.toFloat(),
+                    viewHeight = height.toFloat()
+                )
+                stopAiPulse()
+
+                if (result.success && result.rect != null) {
+                    selectedRect = result.rect
+                    buttonBar.visibility = View.VISIBLE
+                    performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+                    invalidate()
+                    Log.i(TAG, "AI Auto-Select applied: ${result.rect} (source: ${result.source}, conf: ${result.confidence}, time: ${result.inferenceTimeMs}ms)")
+                } else {
+                    Log.d(TAG, "AI Auto-Select fallback/no-result: ${result.errorMessage}")
+                    selectedRect = null
+                    buttonBar.visibility = View.GONE
+                    invalidate()
+                }
+            }
+        }
+
+        /**
+         * 選択枠の内側タップ時に、枠を一回りスムーズに拡大する
+         */
+        private fun expandSelectedRect() {
+            val cur = selectedRect ?: return
+            val expandX = max(48f, cur.width() * 0.18f)
+            val expandY = max(48f, cur.height() * 0.18f)
+
+            val newLeft = max(0f, cur.left - expandX)
+            val newTop = max(0f, cur.top - expandY)
+            val newRight = min(width.toFloat(), cur.right + expandX)
+            val newBottom = min(height.toFloat(), cur.bottom + expandY)
+
+            selectedRect = RectF(newLeft, newTop, newRight, newBottom)
+            buttonBar.visibility = View.VISIBLE
+            performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+            Log.i(TAG, "Expanded selectedRect to: $selectedRect")
         }
 
         private fun drawHandle(canvas: Canvas, cx: Float, cy: Float, radius: Float = 14f) {
@@ -304,6 +481,8 @@ class CropOverlayView(
 
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    touchDownX = x
+                    touchDownY = y
                     lastTouchX = x
                     lastTouchY = y
                     wasSnapped = false
@@ -315,6 +494,9 @@ class CropOverlayView(
                         TouchMode.CREATE
                     }
 
+                    // 枠外タップまたは枠内タップのとき、タップ判定候補とする
+                    isPotentialTap = (touchMode == TouchMode.CREATE || touchMode == TouchMode.MOVE)
+
                     if (touchMode == TouchMode.CREATE) {
                         selectedRect = RectF(x, y, x, y)
                         buttonBar.visibility = View.GONE
@@ -324,6 +506,11 @@ class CropOverlayView(
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+                    val moveDist = Math.hypot((x - touchDownX).toDouble(), (y - touchDownY).toDouble()).toFloat()
+                    if (moveDist > 24f) {
+                        isPotentialTap = false
+                    }
+
                     val dx = x - lastTouchX
                     val dy = y - lastTouchY
                     val rect = selectedRect ?: return true
@@ -351,17 +538,38 @@ class CropOverlayView(
                             var newLeft = rect.left + dx
                             var newTop = rect.top + dy
 
-                            // 画面端への吸着（スナップ）
-                            if (newLeft < snapThreshold) {
+                            // 左端の吸着 & 剥がし
+                            if (rect.left <= 0f) {
+                                // すでに左端に吸着している場合：右へ引っ張れば即座に剥がす
+                                if (dx > 0) newLeft = rect.left + dx else newLeft = 0f
+                            } else if (newLeft < snapThreshold && dx < 0) {
                                 newLeft = 0f
-                            } else if (newLeft + rectW > width - snapThreshold) {
-                                newLeft = width - rectW
                             }
 
-                            if (newTop < snapThreshold) {
+                            // 右端の吸着 & 剥がし
+                            val maxLeft = width - rectW
+                            if (rect.right >= width.toFloat()) {
+                                // すでに右端に吸着している場合：左へ引っ張れば即座に剥がす
+                                if (dx < 0) newLeft = rect.left + dx else newLeft = maxLeft
+                            } else if (newLeft > maxLeft - snapThreshold && dx > 0) {
+                                newLeft = maxLeft
+                            }
+
+                            // 上端の吸着 & 剥がし
+                            if (rect.top <= 0f) {
+                                // すでに上端に吸着している場合：下へ引っ張れば即座に剥がす
+                                if (dy > 0) newTop = rect.top + dy else newTop = 0f
+                            } else if (newTop < snapThreshold && dy < 0) {
                                 newTop = 0f
-                            } else if (newTop + rectH > height - snapThreshold) {
-                                newTop = height - rectH
+                            }
+
+                            // 下端の吸着 & 剥がし
+                            val maxTop = height - rectH
+                            if (rect.bottom >= height.toFloat()) {
+                                // すでに下端に吸着している場合：上へ引っ張れば即座に剥がす
+                                if (dy < 0) newTop = rect.top + dy else newTop = maxTop
+                            } else if (newTop > maxTop - snapThreshold && dy > 0) {
+                                newTop = maxTop
                             }
 
                             // 画面外への飛び出し防止
@@ -374,39 +582,39 @@ class CropOverlayView(
                             lastTouchY = y
                         }
                         TouchMode.RESIZE_TL -> {
-                            rect.left = snapX(min(x, rect.right - 20))
-                            rect.top = snapY(min(y, rect.bottom - 20))
+                            rect.left = snapDimension(min(x, rect.right - 20), rect.left, width.toFloat())
+                            rect.top = snapDimension(min(y, rect.bottom - 20), rect.top, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_TR -> {
-                            rect.right = snapX(max(x, rect.left + 20))
-                            rect.top = snapY(min(y, rect.bottom - 20))
+                            rect.right = snapDimension(max(x, rect.left + 20), rect.right, width.toFloat())
+                            rect.top = snapDimension(min(y, rect.bottom - 20), rect.top, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_BL -> {
-                            rect.left = snapX(min(x, rect.right - 20))
-                            rect.bottom = snapY(max(y, rect.top + 20))
+                            rect.left = snapDimension(min(x, rect.right - 20), rect.left, width.toFloat())
+                            rect.bottom = snapDimension(max(y, rect.top + 20), rect.bottom, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_BR -> {
-                            rect.right = snapX(max(x, rect.left + 20))
-                            rect.bottom = snapY(max(y, rect.top + 20))
+                            rect.right = snapDimension(max(x, rect.left + 20), rect.right, width.toFloat())
+                            rect.bottom = snapDimension(max(y, rect.top + 20), rect.bottom, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_L -> {
-                            rect.left = snapX(min(x, rect.right - 20))
+                            rect.left = snapDimension(min(x, rect.right - 20), rect.left, width.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_R -> {
-                            rect.right = snapX(max(x, rect.left + 20))
+                            rect.right = snapDimension(max(x, rect.left + 20), rect.right, width.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_T -> {
-                            rect.top = snapY(min(y, rect.bottom - 20))
+                            rect.top = snapDimension(min(y, rect.bottom - 20), rect.top, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.RESIZE_B -> {
-                            rect.bottom = snapY(max(y, rect.top + 20))
+                            rect.bottom = snapDimension(max(y, rect.top + 20), rect.bottom, height.toFloat())
                             checkSnapFeedback(rect)
                         }
                         TouchMode.NONE -> {}
@@ -416,14 +624,38 @@ class CropOverlayView(
                     return true
                 }
 
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val rect = selectedRect
-                    if (rect != null && rect.width() > 30 && rect.height() > 30) {
-                        buttonBar.visibility = View.VISIBLE
+                MotionEvent.ACTION_UP -> {
+                    val moveDist = Math.hypot((x - touchDownX).toDouble(), (y - touchDownY).toDouble()).toFloat()
+                    if (isPotentialTap && moveDist <= 24f) {
+                        val curRect = selectedRect
+                        if (touchMode == TouchMode.MOVE && curRect != null && curRect.width() > 10 && curRect.height() > 10 && curRect.contains(x, y)) {
+                            // 選択枠の内側を再タップ：枠を段階的に周囲へ拡大！
+                            expandSelectedRect()
+                        } else if (touchMode == TouchMode.CREATE) {
+                            // 新規タップ（枠外または未選択）：AIスマート選択（失敗時は近傍選択）を実行
+                            triggerAiSelection(x, y)
+                        }
                     } else {
-                        selectedRect = null
-                        buttonBar.visibility = View.GONE
+                        // ドラッグ操作による矩形選択確定または移動・リサイズ確定
+                        val rect = selectedRect
+                        if (rect != null && rect.width() > 30 && rect.height() > 30) {
+                            buttonBar.visibility = View.VISIBLE
+                        } else {
+                            selectedRect = null
+                            buttonBar.visibility = View.GONE
+                        }
                     }
+                    touchMode = TouchMode.NONE
+                    wasSnapped = false
+                    invalidate()
+                    return true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    stopAiPulse()
+                    aiSelectJob?.cancel()
+                    selectedRect = null
+                    buttonBar.visibility = View.GONE
                     touchMode = TouchMode.NONE
                     wasSnapped = false
                     invalidate()

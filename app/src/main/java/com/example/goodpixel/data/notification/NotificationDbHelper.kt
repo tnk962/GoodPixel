@@ -18,7 +18,7 @@ class NotificationDbHelper private constructor(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "goodpixel_notifications.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 4
 
         private const val TABLE_NOTIFICATIONS = "notifications"
         private const val COL_ID = "id"
@@ -28,6 +28,8 @@ class NotificationDbHelper private constructor(context: Context) :
         private const val COL_TEXT = "text"
         private const val COL_POST_TIME = "post_time"
         private const val COL_KEY = "notification_key"
+        private const val COL_URI = "uri"
+        private const val COL_IS_LOCKED = "is_locked"
 
         @Volatile
         private var INSTANCE: NotificationDbHelper? = null
@@ -52,7 +54,9 @@ class NotificationDbHelper private constructor(context: Context) :
                 $COL_TITLE TEXT,
                 $COL_TEXT TEXT,
                 $COL_POST_TIME INTEGER NOT NULL,
-                $COL_KEY TEXT
+                $COL_KEY TEXT,
+                $COL_URI TEXT,
+                $COL_IS_LOCKED INTEGER NOT NULL DEFAULT 0
             )
         """.trimIndent()
         db.execSQL(createSql)
@@ -71,7 +75,9 @@ class NotificationDbHelper private constructor(context: Context) :
                         $COL_TITLE TEXT,
                         $COL_TEXT TEXT,
                         $COL_POST_TIME INTEGER NOT NULL,
-                        $COL_KEY TEXT
+                        $COL_KEY TEXT,
+                        $COL_URI TEXT,
+                        $COL_IS_LOCKED INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
                 db.execSQL("""
@@ -87,6 +93,20 @@ class NotificationDbHelper private constructor(context: Context) :
                 onCreate(db)
             }
         }
+        if (oldVersion < 3) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_NOTIFICATIONS ADD COLUMN $COL_URI TEXT")
+            } catch (e: Exception) {
+                // すでにカラムが存在する場合等は無視
+            }
+        }
+        if (oldVersion < 4) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_NOTIFICATIONS ADD COLUMN $COL_IS_LOCKED INTEGER NOT NULL DEFAULT 0")
+            } catch (e: Exception) {
+                // すでにカラムが存在する場合等は無視
+            }
+        }
     }
 
     suspend fun insertNotification(
@@ -95,7 +115,8 @@ class NotificationDbHelper private constructor(context: Context) :
         title: String,
         text: String,
         postTime: Long,
-        key: String
+        key: String,
+        uri: String? = null
     ): Long = withContext(Dispatchers.IO) {
         val db = writableDatabase
 
@@ -136,6 +157,9 @@ class NotificationDbHelper private constructor(context: Context) :
             put(COL_TEXT, text)
             put(COL_POST_TIME, postTime)
             put(COL_KEY, key)
+            if (uri != null) {
+                put(COL_URI, uri)
+            }
         }
 
         // CONFLICT_REPLACE ではなく、通常の insert で確実に新レコードとして蓄積
@@ -156,8 +180,11 @@ class NotificationDbHelper private constructor(context: Context) :
                 val textIdx = cursor.getColumnIndexOrThrow(COL_TEXT)
                 val timeIdx = cursor.getColumnIndexOrThrow(COL_POST_TIME)
                 val keyIdx = cursor.getColumnIndexOrThrow(COL_KEY)
+                val uriIdx = cursor.getColumnIndex(COL_URI)
+                val lockIdx = cursor.getColumnIndex(COL_IS_LOCKED)
 
                 while (cursor.moveToNext()) {
+                    val isLocked = if (lockIdx >= 0) cursor.getInt(lockIdx) == 1 else false
                     list.add(
                         NotificationItem(
                             id = cursor.getLong(idIdx),
@@ -166,7 +193,9 @@ class NotificationDbHelper private constructor(context: Context) :
                             title = cursor.getString(titleIdx) ?: "",
                             text = cursor.getString(textIdx) ?: "",
                             postTime = cursor.getLong(timeIdx),
-                            notificationKey = cursor.getString(keyIdx)
+                            notificationKey = cursor.getString(keyIdx),
+                            uri = if (uriIdx >= 0) cursor.getString(uriIdx) else null,
+                            isLocked = isLocked
                         )
                     )
                 }
@@ -194,8 +223,11 @@ class NotificationDbHelper private constructor(context: Context) :
                 val textIdx = cursor.getColumnIndexOrThrow(COL_TEXT)
                 val timeIdx = cursor.getColumnIndexOrThrow(COL_POST_TIME)
                 val keyIdx = cursor.getColumnIndexOrThrow(COL_KEY)
+                val uriIdx = cursor.getColumnIndex(COL_URI)
+                val lockIdx = cursor.getColumnIndex(COL_IS_LOCKED)
 
                 while (cursor.moveToNext()) {
+                    val isLocked = if (lockIdx >= 0) cursor.getInt(lockIdx) == 1 else false
                     list.add(
                         NotificationItem(
                             id = cursor.getLong(idIdx),
@@ -204,7 +236,9 @@ class NotificationDbHelper private constructor(context: Context) :
                             title = cursor.getString(titleIdx) ?: "",
                             text = cursor.getString(textIdx) ?: "",
                             postTime = cursor.getLong(timeIdx),
-                            notificationKey = cursor.getString(keyIdx)
+                            notificationKey = cursor.getString(keyIdx),
+                            uri = if (uriIdx >= 0) cursor.getString(uriIdx) else null,
+                            isLocked = isLocked
                         )
                     )
                 }
@@ -212,13 +246,55 @@ class NotificationDbHelper private constructor(context: Context) :
             list
         }
 
+    /**
+     * 通知のロック状態をトグル（ロック ↔ ロック解除）
+     */
+    suspend fun toggleLock(id: Long, currentLocked: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val newLocked = !currentLocked
+        val values = ContentValues().apply {
+            put(COL_IS_LOCKED, if (newLocked) 1 else 0)
+        }
+        writableDatabase.update(TABLE_NOTIFICATIONS, values, "$COL_ID = ?", arrayOf(id.toString()))
+        _dataUpdates.tryEmit(Unit)
+        newLocked
+    }
+
+    /**
+     * 単一の通知を削除（ロックされている場合は削除しない安全仕様）
+     */
     suspend fun deleteById(id: Long) = withContext(Dispatchers.IO) {
-        writableDatabase.delete(TABLE_NOTIFICATIONS, "$COL_ID = ?", arrayOf(id.toString()))
+        writableDatabase.delete(TABLE_NOTIFICATIONS, "$COL_ID = ? AND $COL_IS_LOCKED = 0", arrayOf(id.toString()))
         _dataUpdates.tryEmit(Unit)
     }
 
-    suspend fun clearAll() = withContext(Dispatchers.IO) {
-        writableDatabase.delete(TABLE_NOTIFICATIONS, null, null)
+    /**
+     * ロックされていない通知のみ全削除（ロックされた通知は保護）
+     */
+    suspend fun clearUnlocked() = withContext(Dispatchers.IO) {
+        writableDatabase.delete(TABLE_NOTIFICATIONS, "$COL_IS_LOCKED = 0", null)
         _dataUpdates.tryEmit(Unit)
+    }
+
+    suspend fun clearAll() = clearUnlocked()
+
+    /**
+     * ロックされている通知の件数を取得
+     */
+    suspend fun getLockedCount(): Int = withContext(Dispatchers.IO) {
+        var count = 0
+        try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM $TABLE_NOTIFICATIONS WHERE $COL_IS_LOCKED = 1",
+                null
+            )
+            cursor.use {
+                if (it.moveToFirst()) {
+                    count = it.getInt(0)
+                }
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        count
     }
 }

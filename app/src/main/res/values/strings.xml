@@ -2,7 +2,7 @@
     <string name="app_name">GoodPixel</string>
     <string name="accessibility_service_description">画面端ジェスチャー（戻る、スクリーンショット、画面分割等）および音量キーの拡張操作を実行するために使用します。</string>
     <string name="shortcut_notilog_short">通知ログ</string>
-    <string name="shortcut_notilog_long">NotiStar 通知ログ</string>
+    <string name="shortcut_notilog_long">通知ログ</string>
     <string name="shortcut_settings_short">設定</string>
     <string name="shortcut_settings_long">GoodPixel 設定</string>
 </resources>

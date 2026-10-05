@@ -75,6 +75,12 @@ fun MainScreen(
     var isNotificationListenerGranted by remember { mutableStateOf(checkNotificationListenerPermission(context)) }
     var isDebugOverlayVisible by remember { mutableStateOf(GoodAccessibilityService.isDebugOverlayEnabled(context)) }
     var isVibrationOn by remember { mutableStateOf(GoodAccessibilityService.isVibrationEnabled(context)) }
+    var isOhoEnabled by remember { mutableStateOf(GoodAccessibilityService.isOhoEnabled(context)) }
+    var isHideNavBarEnabled by remember { mutableStateOf(GoodAccessibilityService.isHideNavBarEnabled(context)) }
+    val prefs = remember { context.getSharedPreferences("goodpixel_prefs", Context.MODE_PRIVATE) }
+    var isTestNotificationEnabled by remember {
+        mutableStateOf(prefs.getBoolean("pref_show_test_notification_btn", false))
+    }
 
     // アップデート管理用の状態
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -169,9 +175,9 @@ fun MainScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 通知アクセス権限（NotiStar用）
+                    // 通知アクセス権限（通知ログ用）
                     StatusRow(
-                        title = "③ 通知アクセス (NotiStar通知ログ収集)",
+                        title = "③ 通知アクセス (通知ログ収集)",
                         isEnabled = isNotificationListenerGranted,
                         onOpenSettings = {
                             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
@@ -191,6 +197,56 @@ fun MainScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("操作設定", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    // ワンハンドオペレーション+ (OHO+) ON/OFF
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("ワンハンドオペレーション+ (OHO+)", fontWeight = FontWeight.Medium)
+                            Text(
+                                "画面端ジェスチャー操作（戻る・スクショ・クイックツール等）",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isOhoEnabled,
+                            onCheckedChange = { checked ->
+                                isOhoEnabled = checked
+                                GoodAccessibilityService.setOhoEnabled(context, checked)
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // 画面下の切り替えバーを非表示 ON/OFF
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("画面下のバー（切り替えピル）を非表示", fontWeight = FontWeight.Medium)
+                            Text(
+                                "最下部の白い横棒を隠します（下からのスワイプ操作は維持されます）",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isHideNavBarEnabled,
+                            onCheckedChange = { checked ->
+                                isHideNavBarEnabled = checked
+                                GoodAccessibilityService.setHideNavBarEnabled(context, checked)
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                     // バイブレーション ON/OFF
                     Row(
@@ -263,7 +319,7 @@ fun MainScreen(
                 }
             }
 
-            // 4. NotiStar & 新機能ランチャーカード
+            // 4. 通知ログ & 新機能ランチャーカード
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
@@ -271,7 +327,7 @@ fun MainScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("📜 NotiStar 代替機能", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("📜 通知ログ機能", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "通知をまとめず完全時系列で保存し、アプリ名や本文からいつでも全文検索できます。",
@@ -292,6 +348,31 @@ fun MainScreen(
                     ) {
                         Text("📜 通知ログ・履歴を開く")
                     }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                    // デバッグ用テスト通知ボタン表示トグル
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("テスト通知ボタンを表示 (デバッグ用)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                "通知ログ画面右上のベルマーク（🔔）を表示します",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isTestNotificationEnabled,
+                            onCheckedChange = { checked ->
+                                isTestNotificationEnabled = checked
+                                prefs.edit().putBoolean("pref_show_test_notification_btn", checked).apply()
+                            }
+                        )
+                    }
                 }
             }
 
@@ -307,7 +388,7 @@ fun MainScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "・エッジパネル: 画面右端上部の白い半透明タブを内側に引くと、アプリランチャーが展開します（ゲーム中は自動非表示）。\n" +
-                        "・クイックツール: 画面端から「水平長押しスワイプ」で音量・明るさ等の操作パネルがポップアップします。",
+                        "・クイックツール: 画面端から「水平長押しスワイプ」で、メディア操作・Wi-Fi・Bluetooth・全ミュート・画面録画などのアイコン操作パネルがポップアップします。",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp

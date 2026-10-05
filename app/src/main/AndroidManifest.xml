@@ -41,7 +41,7 @@
 
         <activity
             android:name=".ui.notilog.NotiLogActivity"
-            android:label="通知履歴 (NotiStar)"
+            android:label="通知ログ"
             android:exported="true"
             android:theme="@style/Theme.GoodPixel" />
 
@@ -64,7 +64,7 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- NotiStar代替：通知リスナーサービス -->
+        <!-- 通知ログ：通知リスナーサービス -->
         <service
             android:name=".service.GoodNotificationListenerService"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"

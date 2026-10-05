@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.goodpixel"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -33,9 +33,16 @@ android {
     }
 
     packaging {
-      resources {
-        excludes += "/META-INF/{AL2.0,LGPL2.1}"
-      }
+        jniLibs {
+            useLegacyPackaging = false
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    androidResources {
+      noCompress += "tflite"
     }
 }
 
@@ -52,6 +59,9 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)
+
+  // MediaPipe Tasks Vision
+  implementation(libs.mediapipe.tasks.vision)
 
   // Arch Components
   implementation(libs.androidx.lifecycle.runtime.compose)

@@ -13,5 +13,7 @@ data class NotificationItem(
     val text: String,
     val postTime: Long,
     val notificationKey: String,
+    val uri: String? = null,
+    val isLocked: Boolean = false,
     val pendingIntent: PendingIntent? = null
 )

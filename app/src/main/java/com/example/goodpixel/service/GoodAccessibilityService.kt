@@ -1,14 +1,19 @@
 package com.example.goodpixel.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.annotation.SuppressLint
+import android.app.KeyguardManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
@@ -73,6 +78,35 @@ class GoodAccessibilityService : AccessibilityService() {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(KEY_VIBRATION, enabled).apply()
             instance?.vibrationEnabled = enabled
+        }
+
+        private const val KEY_OHO_ENABLED = "pref_oho_enabled"
+        private const val KEY_HIDE_NAVBAR = "pref_hide_navbar_enabled"
+
+        fun isOhoEnabled(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(KEY_OHO_ENABLED, true)
+        }
+
+        fun setOhoEnabled(context: Context, enabled: Boolean) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_OHO_ENABLED, enabled).apply()
+            instance?.updateOhoVisibility(enabled)
+        }
+
+        fun isHideNavBarEnabled(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(KEY_HIDE_NAVBAR, false)
+        }
+
+        fun setHideNavBarEnabled(context: Context, enabled: Boolean) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_HIDE_NAVBAR, enabled).apply()
+            if (enabled) {
+                instance?.showHideNavBarOverlay()
+            } else {
+                instance?.dismissHideNavBarOverlay()
+            }
         }
 
         fun isDebugOverlayEnabled(context: Context): Boolean {
@@ -142,9 +176,23 @@ class GoodAccessibilityService : AccessibilityService() {
     private var cropOverlayView: CropOverlayView? = null
     private var quickToolsOverlayView: QuickToolsOverlayView? = null
     private var edgePanelOverlayView: EdgePanelOverlayView? = null
+    private var hideNavBarOverlayView: View? = null
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var gameMonitorJob: Job? = null
+
+    private var isScreenLockReceiverRegistered = false
+    private val screenLockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            if (action == Intent.ACTION_SCREEN_OFF || action == Intent.ACTION_USER_PRESENT) {
+                Log.d(TAG, "Screen off / user present: dismissing overlays")
+                dismissQuickToolsOverlay()
+                dismissEdgePanelOverlay()
+                dismissCropOverlay()
+            }
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -158,6 +206,21 @@ class GoodAccessibilityService : AccessibilityService() {
 
         setupOverlays()
         observeGameStatus()
+
+        try {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(screenLockReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(screenLockReceiver, filter)
+            }
+            isScreenLockReceiverRegistered = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register screenLockReceiver", e)
+        }
     }
 
     /**
@@ -169,9 +232,11 @@ class GoodAccessibilityService : AccessibilityService() {
         windowManager.defaultDisplay.getRealMetrics(metrics)
         val screenHeight = metrics.heightPixels
 
-        val handleWidth = 100 // 約30dp相当（指が届く適正幅）
-        val handleHeight = (screenHeight * 0.45f).toInt()
-        val yOffset = (screenHeight * 0.08f).toInt()
+        // OHO+準拠のスマート幅（48px = 約15dp）。Twitterの共有ボタン等（端から70px〜）を邪魔しない
+        val handleWidth = 48
+        // 画面下部のボタンやUIバーを塞がないよう、高さをコンパクト化し中央手元寄りに配置
+        val handleHeight = (screenHeight * 0.35f).toInt()
+        val yOffset = -(screenHeight * 0.02f).toInt()
 
         // TYPE_ACCESSIBILITY_OVERLAY: システム最上位
         val layoutFlag = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -210,10 +275,10 @@ class GoodAccessibilityService : AccessibilityService() {
         rightOverlayView = createHandleView(isLeft = false)
         windowManager.addView(rightOverlayView, rightParams)
 
-        // エッジパネル引き出しタブ（右端・手元上部）
+        // エッジパネル引き出しタブ（右端・邪魔にならない手元やや上部）
         val edgeParams = WindowManager.LayoutParams(
-            48, // タッチ幅
-            220, // タッチ高さ
+            36, // タッチ幅をスリム化
+            200, // タッチ高さ
             layoutFlag,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -221,7 +286,7 @@ class GoodAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            y = -(screenHeight * 0.16f).toInt() // OHO+ハンドルの少し上
+            y = -(screenHeight * 0.20f).toInt() // Twitterのボタンエリアから遠ざけた上部
         }
 
         edgeHandleView = EdgeHandleView(this) {
@@ -235,6 +300,10 @@ class GoodAccessibilityService : AccessibilityService() {
         excludeSystemGestures(edgeHandleView)
 
         updateOverlayColors(prefs.getBoolean(KEY_DEBUG_OVERLAY, false))
+        updateOhoVisibility(isOhoEnabled(this))
+        if (isHideNavBarEnabled(this)) {
+            showHideNavBarOverlay()
+        }
         Log.i(TAG, "Overlays successfully added!")
     }
 
@@ -316,6 +385,21 @@ class GoodAccessibilityService : AccessibilityService() {
         return view
     }
 
+    /**
+     * ハンドル領域内の単なるタップ時、下のアプリ（Twitter等）にクリックをパススルー送信する
+     */
+    private fun passThroughClick(x: Float, y: Float) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val path = Path().apply {
+                moveTo(x, y)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0, 40)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, null, null)
+            Log.d(TAG, "Passed through click to underlying app at ($x, $y)")
+        }
+    }
+
     private fun handleGesture(
         startX: Float,
         startY: Float,
@@ -330,12 +414,28 @@ class GoodAccessibilityService : AccessibilityService() {
 
         Log.d(TAG, "Gesture end: dx=$dx, dy=$dy, dist=$distance, isLongPress=$isLongPress")
 
-        // 誤タップ防止（30px未満は無視）
-        if (distance < 30f) return
+        // スワイプ移動がごく小さい場合、または長押しでない単なるタップの場合：
+        // 下のアプリ（Twitterの共有ボタン・いいね等）にクリックを即座にパススルー！
+        if (distance < 24f && !isLongPress) {
+            passThroughClick(endX, endY)
+            return
+        }
+
+        // 誤タップ防止（30px未満は無視、かつタップパススルー）
+        if (distance < 30f) {
+            if (!isLongPress) passThroughClick(endX, endY)
+            return
+        }
 
         // 画面端から内側へのスワイプ成分があるか確認
         val isSwipingInward = if (isLeft) dx > 15f else dx < -15f
-        if (!isSwipingInward) return
+        if (!isSwipingInward) {
+            // 内側スワイプではない場合（縦スクロールや画面外向き）も、下のアプリへタップ透過
+            if (!isLongPress && distance < 45f) {
+                passThroughClick(endX, endY)
+            }
+            return
+        }
 
         // スワイプ角度 (0°〜90°)
         val angle = Math.toDegrees(atan2(abs(dy).toDouble(), abs(dx).toDouble())).toFloat()
@@ -407,10 +507,11 @@ class GoodAccessibilityService : AccessibilityService() {
     private fun observeGameStatus() {
         gameMonitorJob = serviceScope.launch {
             _isCurrentAppGame.collect { isGame ->
-                val visibility = if (isGame) View.GONE else View.VISIBLE
-                leftOverlayView?.visibility = visibility
-                rightOverlayView?.visibility = visibility
-                edgeHandleView?.visibility = visibility
+                val ohoEnabled = isOhoEnabled(this@GoodAccessibilityService)
+                val ohoVisibility = if (ohoEnabled && !isGame) View.VISIBLE else View.GONE
+                leftOverlayView?.visibility = ohoVisibility
+                rightOverlayView?.visibility = ohoVisibility
+                edgeHandleView?.visibility = if (isGame) View.GONE else View.VISIBLE
             }
         }
     }
@@ -425,6 +526,12 @@ class GoodAccessibilityService : AccessibilityService() {
                 val pkgName = event.packageName?.toString()
                 if (pkgName != null && pkgName != packageName && pkgName != "com.android.systemui") {
                     checkIfGame(pkgName)
+                    if (quickToolsOverlayView != null) {
+                        dismissQuickToolsOverlay()
+                    }
+                    if (edgePanelOverlayView != null) {
+                        dismissEdgePanelOverlay()
+                    }
                 }
                 checkKeyboardVisibility()
             }
@@ -537,14 +644,17 @@ class GoodAccessibilityService : AccessibilityService() {
 
     private fun startSmartCapture() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // キャプチャ直前に両端のハンドル（青いデバッグ枠、エッジハンドル含む）を一時的に隠す
+            // キャプチャ直前にエッジパネルや両端のハンドル（青い枠、エッジハンドル含む）を確実に隠す
+            dismissEdgePanelOverlay()
+            dismissQuickToolsOverlay()
             leftOverlayView?.visibility = View.INVISIBLE
             rightOverlayView?.visibility = View.INVISIBLE
             edgeHandleView?.visibility = View.INVISIBLE
+            hideNavBarOverlayView?.visibility = View.INVISIBLE
 
-            // 描画更新を少し待ってからスクリーンショットを取得（写り込み防止）
+            // 描画更新がウィンドウマネージャに反映されてからスクリーンショットを取得（写り込み完全防止）
             serviceScope.launch(Dispatchers.Main) {
-                delay(80)
+                delay(120)
                 takeScreenshot(
                     Display.DEFAULT_DISPLAY,
                     applicationContext.mainExecutor,
@@ -585,10 +695,14 @@ class GoodAccessibilityService : AccessibilityService() {
 
     private fun restoreHandleVisibility() {
         val isGame = _isCurrentAppGame.value
-        val visibility = if (isGame) View.GONE else View.VISIBLE
+        val ohoEnabled = isOhoEnabled(this)
+        val visibility = if (ohoEnabled && !isGame) View.VISIBLE else View.GONE
         leftOverlayView?.visibility = visibility
         rightOverlayView?.visibility = visibility
-        edgeHandleView?.visibility = visibility
+        edgeHandleView?.visibility = if (isGame) View.GONE else View.VISIBLE
+        if (isHideNavBarEnabled(this)) {
+            hideNavBarOverlayView?.visibility = View.VISIBLE
+        }
     }
 
     fun showQuickToolsOverlay() {
@@ -701,6 +815,64 @@ class GoodAccessibilityService : AccessibilityService() {
         restoreHandleVisibility()
     }
 
+    fun updateOhoVisibility(enabled: Boolean = isOhoEnabled(this)) {
+        val isGame = _isCurrentAppGame.value
+        val visibility = if (enabled && !isGame) View.VISIBLE else View.GONE
+        leftOverlayView?.visibility = visibility
+        rightOverlayView?.visibility = visibility
+        Log.d(TAG, "updateOhoVisibility: enabled=$enabled, isGame=$isGame -> visibility=$visibility")
+    }
+
+    fun showHideNavBarOverlay() {
+        if (hideNavBarOverlayView != null) return
+
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val navBarHeight = if (resourceId > 0) {
+            resources.getDimensionPixelSize(resourceId)
+        } else {
+            (resources.displayMetrics.density * 32).toInt()
+        }
+
+        // FLAG_NOT_TOUCHABLE によりホーム画面スワイプやアプリ切り替えジェスチャーの操作性を100%維持
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            navBarHeight,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = 0
+        }
+
+        val overlay = View(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+
+        try {
+            windowManager.addView(overlay, params)
+            hideNavBarOverlayView = overlay
+            Log.i(TAG, "hideNavBarOverlayView displayed (height: $navBarHeight px)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add hideNavBarOverlayView", e)
+        }
+    }
+
+    fun dismissHideNavBarOverlay() {
+        hideNavBarOverlayView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error removing hideNavBarOverlayView", e)
+            }
+            hideNavBarOverlayView = null
+            Log.i(TAG, "hideNavBarOverlayView dismissed")
+        }
+    }
+
     override fun onInterrupt() {
         Log.w(TAG, "GoodAccessibilityService interrupted")
     }
@@ -711,12 +883,19 @@ class GoodAccessibilityService : AccessibilityService() {
         dismissCropOverlay()
         dismissQuickToolsOverlay()
         dismissEdgePanelOverlay()
+        dismissHideNavBarOverlay()
         leftOverlayView?.let { windowManager.removeView(it) }
         rightOverlayView?.let { windowManager.removeView(it) }
         edgeHandleView?.let { windowManager.removeView(it) }
         leftOverlayView = null
         rightOverlayView = null
         edgeHandleView = null
+        if (isScreenLockReceiverRegistered) {
+            try {
+                unregisterReceiver(screenLockReceiver)
+            } catch (_: Exception) {}
+            isScreenLockReceiverRegistered = false
+        }
         instance = null
         _isServiceEnabled.value = false
         Log.i(TAG, "GoodAccessibilityService destroyed")
