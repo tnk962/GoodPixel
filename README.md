@@ -1,12 +1,37 @@
 # GoodPixel (Galaxy to Pixel 統合ユーティリティ)
 
-Galaxy端末（Good Lock / One Hand Operation + / スマート選択 / エッジパネル / NotiStar 等）からGoogle Pixel（または他社Android端末）へ移行する際に、失われがちな**親指操作の快適性、情報収集スピード、大画面マルチタスク体験を1つのアプリで完全再現・強化するオールインワン常駐ユーティリティ**です。
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue.svg)](https://github.com/tnk962/GoodPixel/releases/tag/v1.2.0)
+[![Android](https://img.shields.io/badge/Android-14%20|%2015%20|%2016-green.svg)](https://developer.android.com)
+[![16KB Page Size](https://img.shields.io/badge/16KB%20Alignment-Compatible-brightgreen.svg)](https://developer.android.com/16kb-page-size)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+
+Galaxy端末（Good Lock / One Hand Operation + / NavStar / スマート選択 / エッジパネル / 通知ログ 等）からGoogle Pixel（または他社Android端末）へ移行する際に、失われがちな**親指操作の快適性、大画面マルチタスク体験、情報収集スピードを1つのアプリで完全再現・強化するオールインワン常駐ユーティリティ**です。
+
+---
+
+## 🌟 最新バージョン v1.2.0 の主な新機能
+
+- **画面下のバー（切り替えピル）非表示（NavStar再現）**:
+  - 設定画面から「画面下のバー（切り替えピル）を非表示」をON/OFF可能（デフォルトOFF）。
+  - 最前面透過マスク（`FLAG_NOT_TOUCHABLE`）により、ホーム／アプリ切替スワイプの操作性を100%維持したまま、目障りな白い横棒を消去。
+  - スマート選択実行時には自動でマスクが一時退避し、保存画像への写り込みを防止。
+- **ワンハンドオペレーション+ (OHO+) ON/OFF トグル新設**:
+  - 設定画面から画面端ジェスチャーの有効/無効をいつでもワンタップで切り替え可能に。
+- **通知ログ機能の全面ブラッシュアップ**:
+  - エッジスワイプ削除（画面幅75%以上までスワイプ時のみ削除、途中キャンセルは安全に復帰、端到達微振動）。
+  - 商標表記を完全撤廃し「通知ログ」「通知ログ機能」に名称統一。
+  - 試験用ベルマークの表示/非表示トグルを追加（デフォルトOFF）。
+- **クイックツール刷新 & オートディスミス**:
+  - 4×4グリッド・16タイル構成へ刷新（メディア再生/早送り、Wi-Fi、Bluetooth、画面回転、画面録画、全ミュート、通知オフ等）。
+  - 8秒無操作での自動クローズ、画面消灯・端末ロック・背面アプリ終了での自動安全終了に対応。
+- **16KBページサイズ対応（Android 15+ / 16KB Alignment）**:
+  - Android 15以降の16KBページサイズ環境に完全適合。
 
 ---
 
 ## 🎯 開発の背景とコンセプト
 
-Galaxyを長年愛用してきたユーザーが他社製Androidに乗り換えた際、最も大きな障壁となるのが「Good Lock（One Hand Operation +、NotiStar等）」の不在です。
+Galaxyを長年愛用してきたユーザーが他社製Androidに乗り換えた際、最も大きな障壁となるのが「Good Lock（One Hand Operation +、NavStar、NotiStar等）」の不在です。
 本プロジェクトでは、複数のアプリを個別に入れるのではなく、**「1つの統合常駐サービス」**として設計・実装することで、以下のメリットを実現しています：
 
 1. **タッチ判定の競合・誤爆ゼロ**: 画面端のジェスチャー判定とエッジパネルを1つのエンジンで管理。
@@ -106,6 +131,7 @@ OS標準の通知欄のようにアプリごとにまとめず、**届いた順�
   - `WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY`: Android OS標準の「戻る」矢印ジェスチャーより上位レイヤーでタッチイベントを100%掌握。
   - `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES`: ディスプレイカットアウト（カメラノッチ）やステータスバーを完全に貫通し、1080×2410の物理画面ピクセルと完全等倍表示を実現。
   - `moveKeyboard` アルゴリズム: `AccessibilityWindowInfo.TYPE_INPUT_METHOD` をリアルタイム監視し、キーボード展開時はオーバーレイの座標系を上方にシフト退避。
+  - `16KB Page Size Alignment`: Android 15以降の16KBページサイズ端末で安定動作。
   - `QUERY_ALL_PACKAGES` & `MATCH_ALL`: Android 11以降のパッケージ可視性制限をクリアし、端末内の全インストール済みアプリを完全走査。
 
 ---
@@ -118,7 +144,7 @@ OS標準の通知欄のようにアプリごとにまとめず、**届いた順�
 | :--- | :--- |
 | **ユーザー補助 (Accessibility Service)** | 画面端のスワイプ判定、戻る/スクショの実行、画面キャプチャの取得、ゲーム起動検知 |
 | **他のアプリの上に重ねて表示 (Overlay)** | 画面端の透明タッチハンドル、エッジパネル、クイックツール、クロップ画面の表示 |
-| **通知へのアクセス (Notification Listener)** | NotiStar機能としての過去通知の収集・保存・検索 |
+| **通知へのアクセス (Notification Listener)** | 通知ログ機能としての過去通知の収集・保存・検索 |
 | **システム設定の変更 (Write Settings)** | 画面自動回転のダイレクト切り替え |
 | **カメラ (Camera)** | クイックツールからのフラッシュライト（懐中電灯）点灯制御 |
 | **不明なアプリのインストール (Install Packages)** | アプリ内からのGoodPixel最新版自動アップデート |
@@ -153,17 +179,20 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ```
 app/src/main/java/com/example/goodpixel/
-├── MainActivity.kt                      # エントリーポイント（HOME起動時NotiStar表示 / 設定タブ切り替え）
+├── MainActivity.kt                      # エントリーポイント（HOME起動時通知ログ表示 / 設定タブ切り替え）
 ├── data/
+│   ├── ai/
+│   │   ├── SmartSelectionEngine.kt      # スマート選択AI解析インターフェース
+│   │   └── MediaPipeSmartSelectionEngine.kt # 画面要素・オブジェクト認識エンジン
 │   ├── edge/
 │   │   └── EdgeAppManager.kt            # エッジパネル登録アプリの走査・永続化
 │   ├── notification/
-│   │   ├── NotificationItem.kt          # NotiStar通知データモデル
+│   │   ├── NotificationItem.kt          # 通知ログデータモデル
 │   │   └── NotificationDbHelper.kt      # 通知履歴SQLiteデータベース（v2: 全件時系列保存）
 │   └── update/
 │       └── AppUpdateManager.kt          # GitHub Releases連携アプリアップデーター
 ├── service/
-│   ├── GoodAccessibilityService.kt      # コア常駐サービス（OHO+、キーボード退避、各パネル統括）
+│   ├── GoodAccessibilityService.kt      # コア常駐サービス（OHO+、NavStarバー隠し、キーボード退避、各パネル統括）
 │   └── GoodNotificationListenerService.kt# 通知リスナーサービス
 └── ui/
     ├── crop/
@@ -173,9 +202,9 @@ app/src/main/java/com/example/goodpixel/
     │   ├── EdgePanelOverlayView.kt      # スライドインランチャーパネル
     │   └── EdgeAppPickerActivity.kt     # アプリ一覧編集画面
     ├── notilog/
-    │   └── NotiLogActivity.kt           # NotiStar通知ログ・インクリメンタル全文検索画面
+    │   └── NotiLogActivity.kt           # 通知ログ・インクリメンタル全文検索画面
     ├── quicktools/
-    │   └── QuickToolsOverlayView.kt     # フローティングクイック設定パネル
+    │   └── QuickToolsOverlayView.kt     # フローティングクイック設定パネル（16タイル）
     └── main/
         └── MainScreen.kt                # 統合設定・アップデート確認・動作テスト画面
 ```
