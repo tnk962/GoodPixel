@@ -14,4 +14,4 @@ cache/
 debug.keystore
 debug.keystore.lock
 *.apk
-
+tmp/

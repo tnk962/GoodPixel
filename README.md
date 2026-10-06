@@ -9,6 +9,13 @@ Galaxy端末（Good Lock / One Hand Operation + / NavStar / スマート選択 /
 
 ---
 
+## 📖 操作マニュアル（v1.2.0）
+
+- **[画像付き操作マニュアルを読む](docs/20261006_goodpixel-user-manual.md)** — GitHub上で本文・実機キャプチャ画像・図解・目次をそのまま読めます。
+- **[PDF版をダウンロード](output/pdf/20261006_goodpixel-user-manual.pdf)** — 印刷やオフライン閲覧に適したA4 PDF版（全10ページ）です。
+
+---
+
 ## 🌟 最新バージョン v1.2.0 の主な新機能
 
 - **画面下のバー（切り替えピル）非表示（NavStar再現）**:
