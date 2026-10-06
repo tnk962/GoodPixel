@@ -97,7 +97,7 @@ def footer(c, doc):
     c.line(42, 36, A4[0]-42, 36)
     c.setFont('JP', 8)
     c.setFillColor(INK)
-    c.drawString(42, 22, 'GoodPixel 操作マニュアル | v1.3.0 / Build 4')
+    c.drawString(42, 22, 'GoodPixel 操作マニュアル | v1.3.1 / Build 5')
     c.drawRightString(A4[0]-42, 22, f'{doc.page}')
 
 story = []

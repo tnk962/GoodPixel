@@ -1,6 +1,6 @@
 # GoodPixel (Galaxy to Pixel 統合ユーティリティ)
 
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue.svg)](https://github.com/tnk962/GoodPixel/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-v1.3.1-blue.svg)](https://github.com/tnk962/GoodPixel/releases/tag/v1.3.1)
 [![Android](https://img.shields.io/badge/Android-14%20|%2015%20|%2016-green.svg)](https://developer.android.com)
 [![16KB Page Size](https://img.shields.io/badge/16KB%20Alignment-Compatible-brightgreen.svg)](https://developer.android.com/16kb-page-size)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -9,15 +9,18 @@ Galaxy端末（Good Lock / One Hand Operation + / NavStar / スマート選択 /
 
 ---
 
-## 📖 操作マニュアル（v1.3.0）
+## 📖 操作マニュアル（v1.3.1）
 
-- **[画像付き操作マニュアルを読む](docs/20261006_goodpixel-user-manual.md)** — GitHub上で本文・実機キャプチャ画像・図解・目次をそのまま読めます。
-- **[PDF版をダウンロード](output/pdf/20261006_goodpixel-user-manual.pdf)** — 印刷やオフライン閲覧に適したA4 PDF版（全10ページ）です。
+- **[画像付き操作マニュアルを読む](docs/20261006_goodpixel-user-manual.md)** — GitHub上で本文・概念図解・目次をそのまま読めます。
+- **[PDF版をダウンロード](output/pdf/20261006_goodpixel-user-manual.pdf)** — 印刷やオフライン閲覧に適したA4 PDF版（全9ページ）です。
 
 ---
 
-## 🌟 最新バージョン v1.3.0 の主な新機能
+## 🌟 最新バージョン v1.3.1 の主な新機能
 
+- **Android 13+「制限付き設定」解除ガイド & ワンタップ誘導ダイアログ**:
+  - Android 13以降でPlayストア外からインストールした際に「ユーザー補助」や「通知へのアクセス」がグレーアウトするOS仕様に対応。
+  - 設定画面・通知ログ画面に控えめなヘルプUIを新設し、タップすると解除手順を案内するとともに、ワンタップで「アプリ情報」画面へ直行できるボタンを提供。
 - **新アプリアイコンの全面刷新 (AI-Powered Gemini Accent + OHO+ + NotiStar)**:
   - Geminiでデザインされた公式感あふれる最新アプリアイコンを適用。
   - スマホの輪郭、手のひらジェスチャー、歯車トグル、Geminiの4点グラデーションスパークル、NotiStarサイドバー（赤通知ドット付き）を一体化した象徴的デザイン。
