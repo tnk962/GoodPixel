@@ -1,6 +1,6 @@
 # GoodPixel (Galaxy to Pixel 統合ユーティリティ)
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-blue.svg)](https://github.com/tnk962/GoodPixel/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-v1.3.0-blue.svg)](https://github.com/tnk962/GoodPixel/releases/tag/v1.3.0)
 [![Android](https://img.shields.io/badge/Android-14%20|%2015%20|%2016-green.svg)](https://developer.android.com)
 [![16KB Page Size](https://img.shields.io/badge/16KB%20Alignment-Compatible-brightgreen.svg)](https://developer.android.com/16kb-page-size)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -9,15 +9,23 @@ Galaxy端末（Good Lock / One Hand Operation + / NavStar / スマート選択 /
 
 ---
 
-## 📖 操作マニュアル（v1.2.0）
+## 📖 操作マニュアル（v1.3.0）
 
 - **[画像付き操作マニュアルを読む](docs/20261006_goodpixel-user-manual.md)** — GitHub上で本文・実機キャプチャ画像・図解・目次をそのまま読めます。
 - **[PDF版をダウンロード](output/pdf/20261006_goodpixel-user-manual.pdf)** — 印刷やオフライン閲覧に適したA4 PDF版（全10ページ）です。
 
 ---
 
-## 🌟 最新バージョン v1.2.0 の主な新機能
+## 🌟 最新バージョン v1.3.0 の主な新機能
 
+- **新アプリアイコンの全面刷新 (AI-Powered Gemini Accent + OHO+ + NotiStar)**:
+  - Geminiでデザインされた公式感あふれる最新アプリアイコンを適用。
+  - スマホの輪郭、手のひらジェスチャー、歯車トグル、Geminiの4点グラデーションスパークル、NotiStarサイドバー（赤通知ドット付き）を一体化した象徴的デザイン。
+  - Android Adaptive Icon仕様に完全最適化。Pixel Launcherの円形マスク（72dp）やGalaxy / One UIの角丸四角形マスク等でイラストが一切欠けないセーフゾーン配置と、均一ブルー（`#4E8BDE`）のシームレスブレンドを実現。
+- **操作マニュアルの正式統合 & PDF豆腐文字化けの完全解消**:
+  - Chime Launcher仕様を踏襲した全10章構成の詳細操作マニュアル（Markdown版およびA4組版PDF版）を正式同梱。
+  - 第8章（クイックツール）に実際の操作パネル展開画面（図8）のスクリーンショットを新設。
+  - PDF組版（ReportLab）で発生していた特殊記号・絵文字の「白い四角（豆腐）」を100%根絶。全テキストを高品質な日本語ラベル表記へ統一。
 - **画面下のバー（切り替えピル）非表示（NavStar再現）**:
   - 設定画面から「画面下のバー（切り替えピル）を非表示」をON/OFF可能（デフォルトOFF）。
   - 最前面透過マスク（`FLAG_NOT_TOUCHABLE`）により、ホーム／アプリ切替スワイプの操作性を100%維持したまま、目障りな白い横棒を消去。

@@ -1,8 +1,8 @@
 # GoodPixel 操作マニュアル
 
-対象：v1.2.0 / Build 3　作成日：2026年10月6日
+対象：v1.3.0 / Build 4　作成日：2026年10月6日
 
-GalaxyからGoogle Pixelへ乗り換えた方のための総合操作ガイドです。Good Lock（One Hand Operation +、NavStar、NotiStar、スマート選択、エッジパネル、クイックツール等）の快適な親指操作とマルチタスク体験をPixel上で完全再現するための操作手順・設定方法を詳しく解説します。掲載している画面キャプチャはPixel 11 Pro（Android 16環境）でv1.2.0を実行して撮影したものです。
+GalaxyからGoogle Pixelへ乗り換えた方のための総合操作ガイドです。Good Lock（One Hand Operation +、NavStar、NotiStar、スマート選択、エッジパネル、クイックツール等）の快適な親指操作とマルチタスク体験をPixel上で完全再現するための操作手順・設定方法を詳しく解説します。掲載している画面キャプチャはPixel 11 Pro（Android 16環境）でv1.3.0を実行して撮影したものです。
 
 [PDF版をダウンロード](../output/pdf/20261006_goodpixel-user-manual.pdf) · [READMEへ戻る](../README.md)
 
@@ -32,7 +32,7 @@ GalaxyからGoogle Pixelへ乗り換えた方のための総合操作ガイド�
 ### APKのインストール手順
 
 1. 配布元の [GitHub Releases (最新版)](https://github.com/tnk962/GoodPixel/releases/latest) をブラウザで開きます。
-2. Assets 一覧から `GoodPixel-v1.2.0.apk` をダウンロードします。
+2. Assets 一覧から `GoodPixel-v1.3.0.apk` をダウンロードします。
 3. ダウンロードしたAPKファイルをタップして開きます。
 4. 「提供元不明のアプリのインストール」の許可を求められた場合は、画面の指示に従い、利用したブラウザまたはファイルアプリに対してインストールを許可します。
 5. 「インストール」をタップし、完了したら「開く」を押します。

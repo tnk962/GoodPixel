@@ -4,6 +4,23 @@ All notable changes to the **GoodPixel (Galaxy to Pixel 引っ越しプロジェ
 
 ---
 
+## [1.3.0] - 2026-10-06
+
+### 🚀 主なアップデート内容 (Highlights)
+
+- **新アプリアイコンの全面刷新 (AI-Powered Gemini Accent + OHO+ + NotiStar)**:
+  - Geminiでデザインされた公式感あふれる最新アプリアイコンを適用。
+  - スマホのアウトライン、手のひらジェスチャー、機能トグル歯車、Geminiの4点グラデーションスパークル、NotiStarサイドバー（赤通知ドット付き）を融合した象徴的なデザイン。
+  - Android Adaptive Icon仕様に完全最適化。Pixel Launcherの円形マスク（72dp）、Galaxy / One UIの角丸四角形マスク等でイラストが一切欠けないセーフゾーン配置と、均一ブルー（`#4E8BDE`）のシームレスブレンドを実現。
+  - 全解像度（mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi）のAdaptive Iconおよびレガシーアイコンを一括刷新。
+
+- **操作マニュアルの正式統合 & PDF豆腐文字化けの完全解消**:
+  - Chime Launcher仕様を踏襲した全10章構成の詳細操作マニュアル（Markdown版およびA4組版PDF版）を正式同梱。
+  - 第8章（クイックツール）に実際の操作パネル展開画面（図8）のスクリーンショットを新設。
+  - PDF組版（ReportLab）で発生していた特殊記号・絵文字の「白い四角（豆腐）」を100%根絶。全テキストを高品質な日本語ラベル表記へ統一し、視認性を大幅に向上。
+
+---
+
 ## [1.2.0] - 2026-10-06
 
 ### 🚀 主なアップデート内容 (Highlights)
