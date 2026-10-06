@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -81,6 +83,7 @@ fun MainScreen(
     var isTestNotificationEnabled by remember {
         mutableStateOf(prefs.getBoolean("pref_show_test_notification_btn", false))
     }
+    var showRestrictedSettingsDialog by remember { mutableStateOf(false) }
 
     // アップデート管理用の状態
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -184,6 +187,41 @@ fun MainScreen(
                             context.startActivity(intent)
                         }
                     )
+
+                    // 制限付き設定（グレーアウト）に関する控えめな案内（未許可項目がある場合のみ表示）
+                    val hasUnpermitted = !isAccessibilityEnabled || !isOverlayPermissionGranted || !isNotificationListenerGranted
+                    if (hasUnpermitted) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showRestrictedSettingsDialog = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("ℹ️", fontSize = 13.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "スイッチがグレーアウトして押せない場合",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        "Android 13以降の制限付き設定の解除手順はこちら",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text("›", fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -723,6 +761,53 @@ fun MainScreen(
             dismissButton = {
                 TextButton(onClick = { showPermissionDialog = false }) {
                     Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    // 制限付き設定解除ダイアログ (Android 13+)
+    if (showRestrictedSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestrictedSettingsDialog = false },
+            title = {
+                Text("設定がグレーアウトしている場合", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column {
+                    Text(
+                        "Android 13以降では、セキュリティ保護のためPlayストア外からインストールしたアプリの権限スイッチが一時的に保護（グレーアウト）される場合があります。\n\n" +
+                        "【解除手順】\n" +
+                        "1. 下の「アプリ情報画面を開く」をタップ\n" +
+                        "2. 画面右上の「︙」（3点メニュー）をタップ\n" +
+                        "3.「制限付き設定を許可」を選択し、生体認証またはPINで認証\n\n" +
+                        "完了後、再度本画面に戻ると通常通りスイッチをONにできるようになります。",
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestrictedSettingsDialog = false
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", context.packageName, null)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            val intent = Intent(Settings.ACTION_SETTINGS)
+                            context.startActivity(intent)
+                        }
+                    }
+                ) {
+                    Text("アプリ情報画面を開く")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestrictedSettingsDialog = false }) {
+                    Text("閉じる")
                 }
             }
         )

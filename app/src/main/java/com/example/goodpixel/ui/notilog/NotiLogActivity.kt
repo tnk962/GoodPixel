@@ -99,6 +99,7 @@ fun NotiLogScreen(
     var notifications by remember { mutableStateOf<List<NotificationItem>>(emptyList()) }
     var isListenerEnabled by remember { mutableStateOf(checkNotificationListenerPermission(context)) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showRestrictedHelpDialog by remember { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = remember { context.getSharedPreferences("goodpixel_prefs", Context.MODE_PRIVATE) }
@@ -222,13 +223,23 @@ fun NotiLogScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                                context.startActivity(intent)
-                            }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("権限を設定する")
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Text("権限を設定する")
+                            }
+                            TextButton(
+                                onClick = { showRestrictedHelpDialog = true }
+                            ) {
+                                Text("スイッチが押せない場合", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -355,6 +366,52 @@ fun NotiLogScreen(
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
                     Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    if (showRestrictedHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestrictedHelpDialog = false },
+            title = {
+                Text("設定がグレーアウトしている場合", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            },
+            text = {
+                Column {
+                    Text(
+                        "Android 13以降では、セキュリティ保護のためPlayストア外からインストールしたアプリの権限スイッチが一時的に保護（グレーアウト）される場合があります。\n\n" +
+                        "【解除手順】\n" +
+                        "1. 下の「アプリ情報画面を開く」をタップ\n" +
+                        "2. 画面右上の「︙」（3点メニュー）をタップ\n" +
+                        "3.「制限付き設定を許可」を選択し、生体認証またはPINで認証\n\n" +
+                        "完了後、「通知アクセス」の設定画面でGoodPixelのスイッチをONにできるようになります。",
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestrictedHelpDialog = false
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", context.packageName, null)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            val intent = Intent(Settings.ACTION_SETTINGS)
+                            context.startActivity(intent)
+                        }
+                    }
+                ) {
+                    Text("アプリ情報画面を開く")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestrictedHelpDialog = false }) {
+                    Text("閉じる")
                 }
             }
         )

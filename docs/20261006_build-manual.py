@@ -223,7 +223,59 @@ while i < len(lines):
         story.append(Spacer(1, 8))
         continue
 
-    # Blockquotes
+    # Warning / Alert blockquotes
+    if line.startswith('> [!WARNING]') or line.startswith('> [!IMPORTANT]'):
+        alert_lines = []
+        i += 1
+        while i < len(lines):
+            l = lines[i].strip()
+            if l.startswith('>'):
+                content = l[1:].strip()
+                alert_lines.append(content)
+                i += 1
+            elif not l:
+                # Check if blockquote continues on next non-empty line
+                next_non_empty = i + 1
+                while next_non_empty < len(lines) and not lines[next_non_empty].strip():
+                    next_non_empty += 1
+                if next_non_empty < len(lines) and lines[next_non_empty].strip().startswith('>'):
+                    alert_lines.append('')
+                    i += 1
+                else:
+                    break
+            else:
+                break
+
+        flowables = []
+        for al in alert_lines:
+            if not al:
+                flowables.append(Spacer(1, 3))
+            elif al.startswith('### '):
+                flowables.append(Paragraph(rich(al[4:]), ParagraphStyle('alert_title', fontName='JP', fontSize=10.5, leading=15, textColor=colors.HexColor('#B45309'), spaceAfter=4)))
+            elif al.startswith('• ') or al.startswith('- '):
+                flowables.append(Paragraph(rich('• ' + al[2:]), ParagraphStyle('alert_bullet', fontName='JP', fontSize=8.5, leading=13, wordWrap='CJK', textColor=INK, spaceAfter=2, leftIndent=8)))
+            elif re.match(r'^\d+\.\s+', al):
+                flowables.append(Paragraph(rich(al), ParagraphStyle('alert_num', fontName='JP', fontSize=8.5, leading=13, wordWrap='CJK', textColor=INK, spaceAfter=2, leftIndent=8)))
+            else:
+                flowables.append(Paragraph(rich(al), ParagraphStyle('alert_body', fontName='JP', fontSize=8.5, leading=13, wordWrap='CJK', textColor=INK, spaceAfter=3)))
+
+        table_width = A4[0] - 84
+        alert_table = Table([[flowables]], colWidths=[table_width])
+        alert_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFFBEB')),
+            ('LINEBEFORE', (0, 0), (0, -1), 4, colors.HexColor('#F59E0B')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#FCD34D')),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(Spacer(1, 6))
+        story.append(alert_table)
+        story.append(Spacer(1, 8))
+        continue
+
+    # Normal Blockquotes
     if line.startswith('> '):
         story.append(p(line[2:], 'body'))
         i += 1
