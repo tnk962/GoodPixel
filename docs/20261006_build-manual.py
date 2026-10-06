@@ -34,7 +34,55 @@ styles = {
     'cell_header': ParagraphStyle('cell_header', fontName='JP', fontSize=8.5, leading=13, wordWrap='CJK', textColor=colors.white),
 }
 
+EMOJI_FALLBACK = {
+    '▶': '▶',
+    '⏸': '[停止]',
+    '⏯': '[再生/停止]',
+    '⏭': '[次へ]',
+    '📶': '[Wi-Fi]',
+    '🛜': '[Wi-Fi]',
+    'ᛒ': '[BT]',
+    '🔊': '[音量]',
+    '🔇': '[消音]',
+    '🔕': '[サイレント]',
+    '🔄': '[回転]',
+    '📹': '[録画]',
+    '🎥': '[録画]',
+    '✂️': '[切抜]',
+    '✂': '[切抜]',
+    '📸': '[スクショ]',
+    '🔦': '[ライト]',
+    '📜': '[ログ]',
+    '⚙️': '[設定]',
+    '⚙': '[設定]',
+    '🔒': '[ロック]',
+    '⚏': '[分割]',
+    '⏻': '[電源]',
+    '🗑️': '[ゴミ箱]',
+    '🗑': '[ゴミ箱]',
+    '🔔': '[通知]',
+    '📦': '[更新]',
+    '⚡': '[ツール]',
+    '☀️': '[輝度]',
+    '✕': '✕',
+    '✓': '✓',
+}
+
+font_obj = TTFont('JP', '/Library/Fonts/Arial Unicode.ttf')
+supported_glyphs = font_obj.face.charToGlyph
+
+def sanitize_text(s):
+    for em, rep in EMOJI_FALLBACK.items():
+        s = s.replace(em, rep)
+    # Filter out any character not in Arial Unicode to prevent tofu boxes
+    out = []
+    for ch in s:
+        if ord(ch) <= 127 or ord(ch) in supported_glyphs:
+            out.append(ch)
+    return ''.join(out)
+
 def rich(s):
+    s = sanitize_text(s)
     s = escape(s)
     s = re.sub(r'\[([^\]]+)\]\((https?://[^)]+)\)', r'<link href="\2" color="#1A73E8">\1</link>', s)
     s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<b>\1</b>', s) # internal links
